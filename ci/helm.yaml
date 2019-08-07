@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: helm
+  namespace: shipper-system
 spec:
   selector:
     matchLabels:
@@ -14,10 +15,4 @@ spec:
     spec:
       containers:
         - name: app
-          image: localhost:32000/bookingcom/shipper-helm:latest
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-
+          image: <HELM_IMAGE>
