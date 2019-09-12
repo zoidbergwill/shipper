@@ -155,10 +155,6 @@ func TestNewAppAllIn(t *testing.T) {
 	f.waitForComplete(rel.GetName())
 	t.Logf("checking that release %q has %d pods (strategy step 0 -- finished)", relName, targetReplicas)
 	f.checkPods(relName, targetReplicas)
-	err = shipperClient.ShipperV1alpha1().Applications(ns.GetName()).Delete(newApp.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE application %q: %q", appName, err)
-	}
 }
 
 func TestNewAppAllInWithRolloutBlockOverride(t *testing.T) {
@@ -203,15 +199,6 @@ func TestNewAppAllInWithRolloutBlockOverride(t *testing.T) {
 	f.waitForComplete(rel.GetName())
 	t.Logf("checking that release %q has %d pods (strategy step 0 -- finished)", relName, targetReplicas)
 	f.checkPods(relName, targetReplicas)
-	err = shipperClient.ShipperV1alpha1().Applications(ns.GetName()).Delete(newApp.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE application %q: %q", appName, err)
-	}
-
-	err = shipperClient.ShipperV1alpha1().RolloutBlocks(ns.GetName()).Delete(rb.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
-	}
 }
 
 func TestBlockNewAppWithRolloutBlock(t *testing.T) {
@@ -222,7 +209,6 @@ func TestBlockNewAppWithRolloutBlock(t *testing.T) {
 
 	targetReplicas := 4
 	ns, err := setupNamespace(t.Name())
-	f := newFixture(ns.GetName(), t)
 	if err != nil {
 		t.Fatalf("could not create namespace %s: %q", ns.GetName(), err)
 	}
@@ -233,7 +219,7 @@ func TestBlockNewAppWithRolloutBlock(t *testing.T) {
 		teardownNamespace(ns.GetName())
 	}()
 
-	rb, err := createRolloutBlock(ns.GetName(), rolloutBlockName)
+	_, err = createRolloutBlock(ns.GetName(), rolloutBlockName)
 	if err != nil {
 		t.Fatalf("could not create rollout block %q: %q", rolloutBlockName, err)
 	}
@@ -246,22 +232,7 @@ func TestBlockNewAppWithRolloutBlock(t *testing.T) {
 	_, err = shipperClient.ShipperV1alpha1().Applications(ns.GetName()).Create(newApp)
 	if err != nil {
 		t.Logf("successfully did not create application %q: %q", appName, err)
-		err = shipperClient.ShipperV1alpha1().RolloutBlocks(ns.GetName()).Delete(rb.GetName(), &metav1.DeleteOptions{})
-		if err != nil {
-			t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
-		}
 		return
-	}
-
-	f.checkPods(appName, 0)
-	err = shipperClient.ShipperV1alpha1().Applications(ns.GetName()).Delete(newApp.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE application %q: %q", appName, err)
-	}
-
-	err = shipperClient.ShipperV1alpha1().RolloutBlocks(ns.GetName()).Delete(rb.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
 	}
 }
 
@@ -294,21 +265,12 @@ func TestBlockNewAppProgressWithRolloutBlock(t *testing.T) {
 		t.Fatalf("could not create application %q: %q", appName, err)
 	}
 
-	rb, err := createRolloutBlock(ns.GetName(), rolloutBlockName)
+	_, err = createRolloutBlock(ns.GetName(), rolloutBlockName)
 	if err != nil {
 		t.Fatalf("could not create rollout block %q: %q", rolloutBlockName, err)
 	}
 
 	f.checkPods(appName, 0)
-	err = shipperClient.ShipperV1alpha1().Applications(ns.GetName()).Delete(newApp.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE application %q: %q", appName, err)
-	}
-
-	err = shipperClient.ShipperV1alpha1().RolloutBlocks(ns.GetName()).Delete(rb.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
-	}
 }
 
 func TestRolloutAllIn(t *testing.T) {
@@ -430,11 +392,6 @@ func TestRolloutAllInWithRolloutBlockOverride(t *testing.T) {
 	f.waitForComplete(contender.GetName())
 	t.Logf("checking that release %q has %d pods (strategy step 0 -- finished)", contender.GetName(), targetReplicas)
 	f.checkPods(contender.GetName(), targetReplicas)
-
-	err = shipperClient.ShipperV1alpha1().RolloutBlocks(ns.GetName()).Delete(rb.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
-	}
 }
 
 func testNewApplicationVanguard(targetReplicas int, t *testing.T) {
@@ -540,11 +497,6 @@ func testNewApplicationVanguardWithRolloutBlockOverride(targetReplicas int, t *t
 		expectedCapacity := int(replicas.CalculateDesiredReplicaCount(uint(step.Capacity.Contender), float64(targetReplicas)))
 		t.Logf("checking that release %q has %d pods (strategy step %d aka %q)", relName, expectedCapacity, i, step.Name)
 		f.checkPods(relName, expectedCapacity)
-	}
-
-	err = shipperClient.ShipperV1alpha1().RolloutBlocks(ns.GetName()).Delete(rb.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
 	}
 }
 
@@ -755,7 +707,7 @@ func TestNewApplicationBlockStrategyBackwards(t *testing.T) {
 	}
 
 	t.Logf("created a new rollout block object %q", rolloutBlockName)
-	rb, err := createRolloutBlock(ns.GetName(), rolloutBlockName)
+	_, err = createRolloutBlock(ns.GetName(), rolloutBlockName)
 	if err != nil {
 		t.Fatalf("could not create rollout block %q: %q", rolloutBlockName, err)
 	}
@@ -773,11 +725,6 @@ func TestNewApplicationBlockStrategyBackwards(t *testing.T) {
 
 	t.Logf("checking that release %q still has %d pods (strategy step %d aka %q)", relName, expectedCapacity, 1, step.Name)
 	f.checkPods(relName, int(expectedCapacity))
-
-	err = shipperClient.ShipperV1alpha1().RolloutBlocks(ns.GetName()).Delete(rb.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
-	}
 }
 
 func TestRolloutMovingStrategyBackwards(t *testing.T) {
@@ -929,7 +876,7 @@ func TestRolloutBlockMovingStrategyBackwards(t *testing.T) {
 	f.checkPods(incumbentName, int(expectedIncumbentCapacity))
 
 	t.Logf("created a new rollout block object %q", rolloutBlockName)
-	rb, err := createRolloutBlock(ns.GetName(), rolloutBlockName)
+	_, err = createRolloutBlock(ns.GetName(), rolloutBlockName)
 	if err != nil {
 		t.Fatalf("could not create rollout block %q: %q", rolloutBlockName, err)
 	}
@@ -954,11 +901,6 @@ func TestRolloutBlockMovingStrategyBackwards(t *testing.T) {
 
 	f.checkPods(contenderName, int(expectedContenderCapacity))
 	f.checkPods(incumbentName, int(expectedIncumbentCapacity))
-
-	err = shipperClient.ShipperV1alpha1().RolloutBlocks(ns.GetName()).Delete(rb.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
-	}
 }
 
 // TestNewApplicationAbort emulates a brand new application rollout.
@@ -1184,16 +1126,6 @@ func TestNewRolloutBlockAddOverrides(t *testing.T) {
 		fmt.Sprintf("%s/%s", newApp.GetNamespace(), newApp.GetName()),
 		fmt.Sprintf("%s/%s", newApp.GetNamespace(), relName),
 	)
-
-	err = shipperClient.ShipperV1alpha1().Applications(namespace).Delete(newApp.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE application %q: %q", appName, err)
-	}
-
-	err = shipperClient.ShipperV1alpha1().RolloutBlocks(namespace).Delete(rb.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
-	}
 }
 
 func TestNewGlobalRolloutBlockAddOverrides(t *testing.T) {
@@ -1223,6 +1155,12 @@ func TestNewGlobalRolloutBlockAddOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not refetch rollout block: %q", err)
 	}
+	defer func() {
+		err = shipperClient.ShipperV1alpha1().RolloutBlocks(rb.GetNamespace()).Delete(rb.GetName(), &metav1.DeleteOptions{})
+		if err != nil {
+			t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
+		}
+	}()
 
 	if len(rb.Status.Overrides.Application) > 0 || len(rb.Status.Overrides.Release) > 0 {
 		t.Fatalf("rollout block has unexpected overrides: %v", rb)
@@ -1254,16 +1192,6 @@ func TestNewGlobalRolloutBlockAddOverrides(t *testing.T) {
 		fmt.Sprintf("%s/%s", newApp.GetNamespace(), newApp.GetName()),
 		fmt.Sprintf("%s/%s", newApp.GetNamespace(), relName),
 	)
-
-	err = shipperClient.ShipperV1alpha1().RolloutBlocks(rb.GetNamespace()).Delete(rb.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
-	}
-
-	err = shipperClient.ShipperV1alpha1().Applications(ns.GetName()).Delete(newApp.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE application %q: %q", appName, err)
-	}
 }
 
 func TestNewRolloutBlockRemoveRelease(t *testing.T) {
@@ -1345,16 +1273,6 @@ func TestNewRolloutBlockRemoveRelease(t *testing.T) {
 		fmt.Sprintf("%s/%s", app.GetNamespace(), app.GetName()),
 		"",
 	)
-
-	err = shipperClient.ShipperV1alpha1().Applications(ns.GetName()).Delete(app.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE application %q: %q", appName, err)
-	}
-
-	err = shipperClient.ShipperV1alpha1().RolloutBlocks(ns.GetName()).Delete(rb.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
-	}
 }
 
 func TestNewGlobalRolloutBlockRemoveRelease(t *testing.T) {
@@ -1386,6 +1304,13 @@ func TestNewGlobalRolloutBlockRemoveRelease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not refetch rollout block: %q", err)
 	}
+
+	defer func() {
+		err = shipperClient.ShipperV1alpha1().RolloutBlocks(rb.GetNamespace()).Delete(rb.GetName(), &metav1.DeleteOptions{})
+		if err != nil {
+			t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
+		}
+	}()
 
 	if len(rb.Status.Overrides.Application) > 0 || len(rb.Status.Overrides.Release) > 0 {
 		t.Fatalf("rollout block has unexpected overrides: %v", rb)
@@ -1437,16 +1362,6 @@ func TestNewGlobalRolloutBlockRemoveRelease(t *testing.T) {
 		fmt.Sprintf("%s/%s", app.GetNamespace(), app.GetName()),
 		"",
 	)
-
-	err = shipperClient.ShipperV1alpha1().RolloutBlocks(rb.GetNamespace()).Delete(rb.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE rollout block %q: %q", rolloutBlockName, err)
-	}
-
-	err = shipperClient.ShipperV1alpha1().Applications(testNamespace).Delete(app.GetName(), &metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("could not DELETE application %q: %q", appName, err)
-	}
 }
 
 // TODO(btyler): cover a variety of broken chart cases as soon as we report
