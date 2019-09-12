@@ -3,11 +3,12 @@ package e2e
 import (
 	"flag"
 	"fmt"
-	"github.com/bookingcom/shipper/pkg/util/rolloutblock"
 	"os"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/bookingcom/shipper/pkg/util/rolloutblock"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -44,7 +45,7 @@ var (
 	inspectFailed  = flag.Bool("inspectfailed", false, "Set this flag to skip deleting the namespaces for failed tests. Useful for debugging.")
 	kubeconfig     = flag.String("kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	appClusterName = flag.String("appcluster", "minikube", "The application cluster that E2E tests will check to determine success/failure")
-	timeoutFlag    = flag.String("progresstimeout", "30s", "timeout when waiting for things to change")
+	timeoutFlag    = flag.String("progresstimeout", "1m", "timeout when waiting for things to change")
 )
 
 var (
