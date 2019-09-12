@@ -1418,13 +1418,15 @@ func (f *fixture) checkPods(relName string, expectedCount int) {
 }
 
 func (f *fixture) waitForRelease(appName string, historyIndex int) *shipper.Release {
+	var app *shipper.Application
 	var newRelease *shipper.Release
 	start := time.Now()
 	// Not logging because we poll pretty fast and that'd be a bunch of garbage to
 	// read through.
 	var state string
 	err := poll(globalTimeout, func() (bool, error) {
-		app, err := shipperClient.ShipperV1alpha1().Applications(f.namespace).Get(appName, metav1.GetOptions{})
+		var err error
+		app, err = shipperClient.ShipperV1alpha1().Applications(f.namespace).Get(appName, metav1.GetOptions{})
 		if err != nil {
 			f.t.Fatalf("failed to fetch app: %q", appName)
 		}
@@ -1446,7 +1448,7 @@ func (f *fixture) waitForRelease(appName string, historyIndex int) *shipper.Rele
 
 	if err != nil {
 		if err == wait.ErrWaitTimeout {
-			f.t.Fatalf("timed out waiting for release to be scheduled (waited %s). final state %q", globalTimeout, state)
+			f.t.Fatalf("timed out waiting for release to be scheduled (waited %s). final state: %q. conditions: %+v", globalTimeout, state, app.Status.Conditions)
 		}
 		f.t.Fatalf("error waiting for release to be scheduled: %q", err)
 	}
@@ -1763,7 +1765,6 @@ func newApplication(namespace, name string, strategy *shipper.RolloutStrategy) *
 }
 
 func createRolloutBlock(namespace, name string) (*shipper.RolloutBlock, error) {
-
 	rb, err := shipperClient.ShipperV1alpha1().RolloutBlocks(namespace).Get(name, metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
