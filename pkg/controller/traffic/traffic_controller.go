@@ -24,8 +24,10 @@ import (
 	"github.com/bookingcom/shipper/pkg/clusterclientstore"
 	shippercontroller "github.com/bookingcom/shipper/pkg/controller"
 	shippererrors "github.com/bookingcom/shipper/pkg/errors"
+	clusterstatusutil "github.com/bookingcom/shipper/pkg/util/clusterstatus"
 	diffutil "github.com/bookingcom/shipper/pkg/util/diff"
 	"github.com/bookingcom/shipper/pkg/util/filters"
+	targetutil "github.com/bookingcom/shipper/pkg/util/target"
 	trafficutil "github.com/bookingcom/shipper/pkg/util/traffic"
 	shipperworkqueue "github.com/bookingcom/shipper/pkg/workqueue"
 )
@@ -35,11 +37,12 @@ const (
 )
 
 const (
-	ServerError    = "ServerError"
-	MissingService = "MissingService"
-	InternalError  = "InternalError"
-	UnknownError   = "UnknownError"
-	PodsNotReady   = "PodsNotReady"
+	ServerError      = "ServerError"
+	MissingService   = "MissingService"
+	InternalError    = "InternalError"
+	UnknownError     = "UnknownError"
+	PodsNotReady     = "PodsNotReady"
+	ClustersNotReady = "ClustersNotReady"
 )
 
 // Controller is the controller implementation for TrafficTarget resources.
@@ -209,17 +212,26 @@ func (c *Controller) syncHandler(key string) error {
 }
 
 func (c *Controller) processTrafficTarget(tt *shipper.TrafficTarget) (*shipper.TrafficTarget, error) {
-	// TODO(jgreff): top-level errors on a TrafficTarget are not reported
-	// to the user. We should introduce a condition to expose them.
+	initialTT := tt.DeepCopy()
+
+	diff := diffutil.NewMultiDiff()
+	defer c.reportTrafficConditionChange(initialTT, diff)
 
 	appName, ok := tt.Labels[shipper.AppLabel]
 	if !ok {
-		return tt, shippererrors.NewMissingShipperLabelError(tt, shipper.AppLabel)
+		err := shippererrors.NewMissingShipperLabelError(tt, shipper.AppLabel)
+		tt.Status.Conditions = targetutil.TransitionToNotOperational(
+			diff, tt.Status.Conditions,
+			InternalError, err.Error())
+		return tt, err
 	}
 
 	syncingReleaseName, ok := tt.Labels[shipper.ReleaseLabel]
 	if !ok {
 		err := shippererrors.NewMissingShipperLabelError(tt, shipper.ReleaseLabel)
+		tt.Status.Conditions = targetutil.TransitionToNotOperational(
+			diff, tt.Status.Conditions,
+			InternalError, err.Error())
 		return tt, err
 	}
 
@@ -227,15 +239,24 @@ func (c *Controller) processTrafficTarget(tt *shipper.TrafficTarget) (*shipper.T
 	appSelector := labels.Set{shipper.AppLabel: appName}.AsSelector()
 	list, err := c.trafficTargetsLister.TrafficTargets(namespace).List(appSelector)
 	if err != nil {
-		return tt, shippererrors.NewKubeclientListError(
+		err := shippererrors.NewKubeclientListError(
 			shipper.SchemeGroupVersion.WithKind("TrafficTarget"),
 			namespace, appSelector, err)
+		tt.Status.Conditions = targetutil.TransitionToNotOperational(
+			diff, tt.Status.Conditions,
+			InternalError, err.Error())
+		return tt, err
 	}
 
 	shifter, err := newPodLabelShifter(appName, syncingReleaseName, namespace, list)
 	if err != nil {
+		tt.Status.Conditions = targetutil.TransitionToNotOperational(
+			diff, tt.Status.Conditions,
+			InternalError, err.Error())
 		return tt, err
 	}
+
+	tt.Status.Conditions = targetutil.TransitionToOperational(diff, tt.Status.Conditions)
 
 	clusterErrors := shippererrors.NewMultiError()
 	newClusterStatuses := make([]*shipper.ClusterTrafficStatus, 0, len(tt.Spec.Clusters))
@@ -266,6 +287,21 @@ func (c *Controller) processTrafficTarget(tt *shipper.TrafficTarget) (*shipper.T
 	sort.Sort(byClusterName(newClusterStatuses))
 
 	tt.Status.Clusters = newClusterStatuses
+
+	clustersNotReady := make([]string, 0)
+	for _, clusterStatus := range tt.Status.Clusters {
+		if !clusterstatusutil.IsClusterTrafficReady(clusterStatus.Conditions) {
+			clustersNotReady = append(clustersNotReady, clusterStatus.Name)
+		}
+	}
+
+	if len(clustersNotReady) == 0 {
+		tt.Status.Conditions = targetutil.TransitionToReady(diff, tt.Status.Conditions)
+	} else {
+		tt.Status.Conditions = targetutil.TransitionToNotReady(
+			diff, tt.Status.Conditions,
+			ClustersNotReady, fmt.Sprintf("%v", clustersNotReady))
+	}
 
 	return tt, clusterErrors.Flatten()
 }
@@ -315,7 +351,7 @@ func (c *Controller) processTrafficTargetOnCluster(
 	)
 	diff.Append(trafficutil.SetClusterTrafficCondition(status, *cond))
 
-	achievedReleaseWeight, err := shifter.SyncCluster(spec.Name, clientset, informerFactory)
+	achievedWeight, err := shifter.SyncCluster(spec.Name, clientset, informerFactory)
 	if err != nil {
 		var reason string
 
@@ -341,14 +377,26 @@ func (c *Controller) processTrafficTargetOnCluster(
 		return err
 	}
 
-	status.AchievedTraffic = achievedReleaseWeight
-	cond = trafficutil.NewClusterTrafficCondition(
-		shipper.ClusterConditionTypeReady,
-		corev1.ConditionTrue,
-		"",
-		"",
-	)
-	diff.Append(trafficutil.SetClusterTrafficCondition(status, *cond))
+	status.AchievedTraffic = achievedWeight
+
+	var readyCond *shipper.ClusterTrafficCondition
+	if achievedWeight == spec.Weight {
+		readyCond = trafficutil.NewClusterTrafficCondition(
+			shipper.ClusterConditionTypeReady,
+			corev1.ConditionTrue,
+			"",
+			"",
+		)
+	} else {
+		readyCond = trafficutil.NewClusterTrafficCondition(
+			shipper.ClusterConditionTypeReady,
+			corev1.ConditionFalse,
+			PodsNotReady,
+			fmt.Sprintf("weight expected: %d, weight achieved: %d", spec.Weight, achievedWeight),
+		)
+	}
+
+	diff.Append(trafficutil.SetClusterTrafficCondition(status, *readyCond))
 
 	return nil
 }
