@@ -1,5 +1,6 @@
 package release
 
+/*
 import (
 	"fmt"
 
@@ -221,3 +222,4 @@ func (c *Controller) getWorkingReleasePair(app *shipper.Application) (*shipper.R
 	// It is OK if incumbent is nil. It just means this is our first rollout.
 	return incumbent, contender, nil
 }
+*/

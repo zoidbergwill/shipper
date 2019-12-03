@@ -221,7 +221,7 @@ func (f *fixture) run() {
 	wait.PollUntil(
 		10*time.Millisecond,
 		func() (bool, error) {
-			return (controller.releaseWorkqueue.Len() >= 1 || controller.applicationWorkqueue.Len() >= 1), nil
+			return controller.releaseWorkqueue.Len() >= 1, nil
 		},
 		stopCh,
 	)
@@ -234,9 +234,8 @@ func (f *fixture) run() {
 		close(readyCh)
 	}()
 
-	controller.processNextReleaseWorkItem()
-	if controller.applicationWorkqueue.Len() > 0 {
-		controller.processNextAppWorkItem()
+	for controller.releaseWorkqueue.Len() > 0 {
+		controller.processNextReleaseWorkItem()
 	}
 	close(f.recorder.Events)
 	<-readyCh

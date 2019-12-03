@@ -70,8 +70,7 @@ type Controller struct {
 	rolloutBlockLister shipperlisters.RolloutBlockLister
 	rolloutBlockSynced cache.InformerSynced
 
-	releaseWorkqueue     workqueue.RateLimitingInterface
-	applicationWorkqueue workqueue.RateLimitingInterface
+	releaseWorkqueue workqueue.RateLimitingInterface
 
 	chartFetcher shipperrepo.ChartFetcher
 
@@ -136,10 +135,6 @@ func NewController(
 			shipperworkqueue.NewDefaultControllerRateLimiter(),
 			"release_controller_releases",
 		),
-		applicationWorkqueue: workqueue.NewNamedRateLimitingQueue(
-			shipperworkqueue.NewDefaultControllerRateLimiter(),
-			"release_controller_applications",
-		),
 
 		chartFetcher: chartFetcher,
 
@@ -154,7 +149,8 @@ func NewController(
 			UpdateFunc: func(oldObj, newObj interface{}) {
 				controller.enqueueRelease(newObj)
 			},
-			DeleteFunc: controller.enqueueAppFromRelease,
+			//TODO
+			//DeleteFunc: controller.enqueueAppFromRelease,
 		})
 
 	eventHandler := cache.ResourceEventHandlerFuncs{
@@ -176,7 +172,6 @@ func NewController(
 func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) {
 	defer runtime.HandleCrash()
 	defer c.releaseWorkqueue.ShutDown()
-	defer c.applicationWorkqueue.ShutDown()
 
 	klog.V(2).Info("Starting Release controller")
 	defer klog.V(2).Info("Shutting down Release controller")
@@ -197,7 +192,6 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) {
 
 	for i := 0; i < threadiness; i++ {
 		go wait.Until(c.runReleaseWorker, time.Second, stopCh)
-		go wait.Until(c.runApplicationWorker, time.Second, stopCh)
 	}
 
 	klog.V(4).Info("Started Release controller")
@@ -210,10 +204,12 @@ func (c *Controller) runReleaseWorker() {
 	}
 }
 
+/*
 func (c *Controller) runApplicationWorker() {
 	for c.processNextAppWorkItem() {
 	}
 }
+*/
 
 // processNextReleaseWorkItem pops an element from the head of the workqueue and
 // passes to the sync release handler. It returns bool indicating if the
@@ -610,6 +606,7 @@ func (c *Controller) enqueueReleaseRateLimited(obj interface{}) {
 	c.releaseWorkqueue.AddRateLimited(key)
 }
 
+/*
 func (c *Controller) enqueueAppFromRelease(obj interface{}) {
 	rel, ok := obj.(*shipper.Release)
 	if !ok {
@@ -625,6 +622,7 @@ func (c *Controller) enqueueAppFromRelease(obj interface{}) {
 
 	c.applicationWorkqueue.Add(appName)
 }
+*/
 
 func (c *Controller) enqueueReleaseFromAssociatedObject(obj interface{}) {
 	kubeobj, ok := obj.(metav1.Object)

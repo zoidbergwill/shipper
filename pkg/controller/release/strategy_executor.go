@@ -267,7 +267,6 @@ func (e *StrategyExecutor) EnsureReleaseStrategyState(cond conditions.StrategyCo
 
 	targetStep := e.curr.release.Spec.TargetStep
 	strategy := e.curr.release.Spec.Environment.Strategy
-	//strategyStep := strategy.Steps[targetStep]
 	isLastStep := int(targetStep) == len(strategy.Steps)-1
 	relStatus := e.curr.release.Status.DeepCopy()
 
