@@ -23,6 +23,7 @@ import (
 	"github.com/bookingcom/shipper/pkg/controller/capacity/builder"
 	shippertesting "github.com/bookingcom/shipper/pkg/testing"
 	capacityutil "github.com/bookingcom/shipper/pkg/util/capacity"
+	targetutil "github.com/bookingcom/shipper/pkg/util/target"
 )
 
 var (
@@ -33,6 +34,7 @@ func init() {
 	rand.Seed(time.Now().UTC().UnixNano())
 	numClus = 1 + rand.Int31n(5)
 	capacityutil.CapacityConditionsShouldDiscardTimestamps = true
+	targetutil.ConditionsShouldDiscardTimestamps = true
 }
 
 func TestUpdatingCapacityTargetUpdatesDeployment(t *testing.T) {
@@ -54,6 +56,13 @@ func TestUpdatingCapacityTargetUpdatesDeployment(t *testing.T) {
 			Status: corev1.ConditionTrue,
 		},
 	}
+
+	capacityTarget.Status.Conditions, _ = targetutil.SetTargetCondition(
+		capacityTarget.Status.Conditions,
+		targetutil.NewTargetCondition(
+			shipper.TargetConditionTypeReady,
+			corev1.ConditionTrue,
+			"", ""))
 
 	f.expectCapacityTargetStatusUpdate(capacityTarget, 0, 0, expectedClusterConditions, []shipper.ClusterCapacityReport{*builder.NewReport("nginx").Build()})
 
@@ -107,6 +116,13 @@ func TestCapacityTargetStatusReturnsCorrectFleetReportWithSinglePod(t *testing.T
 			},
 		})
 	}
+
+	capacityTarget.Status.Conditions, _ = targetutil.SetTargetCondition(
+		capacityTarget.Status.Conditions,
+		targetutil.NewTargetCondition(
+			shipper.TargetConditionTypeReady,
+			corev1.ConditionTrue,
+			"", ""))
 
 	updateAction := kubetesting.NewUpdateAction(
 		schema.GroupVersionResource{
@@ -162,6 +178,13 @@ func TestCapacityTargetStatusReturnsCorrectFleetReportWithSinglePodCompletedCont
 		})
 	}
 
+	capacityTarget.Status.Conditions, _ = targetutil.SetTargetCondition(
+		capacityTarget.Status.Conditions,
+		targetutil.NewTargetCondition(
+			shipper.TargetConditionTypeReady,
+			corev1.ConditionTrue,
+			"", ""))
+
 	updateAction := kubetesting.NewUpdateAction(
 		schema.GroupVersionResource{
 			Group:    shipper.SchemeGroupVersion.Group,
@@ -215,6 +238,13 @@ func TestCapacityTargetStatusReturnsCorrectFleetReportWithSinglePodTerminatedCon
 			},
 		})
 	}
+
+	capacityTarget.Status.Conditions, _ = targetutil.SetTargetCondition(
+		capacityTarget.Status.Conditions,
+		targetutil.NewTargetCondition(
+			shipper.TargetConditionTypeReady,
+			corev1.ConditionTrue,
+			"", ""))
 
 	updateAction := kubetesting.NewUpdateAction(
 		schema.GroupVersionResource{
@@ -270,6 +300,13 @@ func TestCapacityTargetStatusReturnsCorrectFleetReportWithSinglePodRestartedCont
 		})
 	}
 
+	capacityTarget.Status.Conditions, _ = targetutil.SetTargetCondition(
+		capacityTarget.Status.Conditions,
+		targetutil.NewTargetCondition(
+			shipper.TargetConditionTypeReady,
+			corev1.ConditionTrue,
+			"", ""))
+
 	updateAction := kubetesting.NewUpdateAction(
 		schema.GroupVersionResource{
 			Group:    shipper.SchemeGroupVersion.Group,
@@ -323,6 +360,13 @@ func TestCapacityTargetStatusReturnsCorrectFleetReportWithSinglePodRestartedCont
 			},
 		})
 	}
+
+	capacityTarget.Status.Conditions, _ = targetutil.SetTargetCondition(
+		capacityTarget.Status.Conditions,
+		targetutil.NewTargetCondition(
+			shipper.TargetConditionTypeReady,
+			corev1.ConditionTrue,
+			"", ""))
 
 	updateAction := kubetesting.NewUpdateAction(
 		schema.GroupVersionResource{
@@ -401,6 +445,13 @@ func TestCapacityTargetStatusReturnsCorrectFleetReportWithMultiplePods(t *testin
 			},
 		})
 	}
+
+	capacityTarget.Status.Conditions, _ = targetutil.SetTargetCondition(
+		capacityTarget.Status.Conditions,
+		targetutil.NewTargetCondition(
+			shipper.TargetConditionTypeReady,
+			corev1.ConditionTrue,
+			"", ""))
 
 	updateAction := kubetesting.NewUpdateAction(
 		schema.GroupVersionResource{
@@ -532,6 +583,7 @@ func TestCapacityTargetStatusReturnsCorrectFleetReportWithMultiplePodsWithDiffer
 		return sadPodsStatuses[i].Name < sadPodsStatuses[j].Name
 	})
 
+	notReadyClusters := make([]string, 0, numClus)
 	for i := int32(0); i < numClus; i++ {
 		capacityTarget.Status.Clusters = append(capacityTarget.Status.Clusters, shipper.ClusterCapacityStatus{
 			Name:              fmt.Sprintf("cluster_%d", i),
@@ -543,11 +595,19 @@ func TestCapacityTargetStatusReturnsCorrectFleetReportWithMultiplePodsWithDiffer
 			},
 			SadPods: sadPodsStatuses,
 		})
+		notReadyClusters = append(notReadyClusters, fmt.Sprintf("cluster_%d", i))
 	}
 
 	sort.Slice(capacityTarget.Status.Clusters[0].SadPods, func(i, j int) bool {
 		return capacityTarget.Status.Clusters[0].SadPods[i].Name < capacityTarget.Status.Clusters[0].SadPods[j].Name
 	})
+
+	capacityTarget.Status.Conditions, _ = targetutil.SetTargetCondition(
+		capacityTarget.Status.Conditions,
+		targetutil.NewTargetCondition(
+			shipper.TargetConditionTypeReady,
+			corev1.ConditionFalse,
+			ClustersNotReady, fmt.Sprintf("%v", notReadyClusters)))
 
 	updateAction := kubetesting.NewUpdateAction(
 		schema.GroupVersionResource{
@@ -585,6 +645,18 @@ func TestUpdatingDeploymentsUpdatesTheCapacityTargetStatus(t *testing.T) {
 			Message: "expected 5 replicas but have 0",
 		},
 	}
+
+	notReadyClusters := make([]string, 0, numClus)
+	for i := int32(0); i < numClus; i++ {
+		notReadyClusters = append(notReadyClusters, fmt.Sprintf("cluster_%d", i))
+	}
+	capacityTarget.Status.Conditions, _ = targetutil.SetTargetCondition(
+		capacityTarget.Status.Conditions,
+		targetutil.NewTargetCondition(
+			shipper.TargetConditionTypeReady,
+			corev1.ConditionFalse,
+			ClustersNotReady, fmt.Sprintf("%v", notReadyClusters)))
+
 	f.expectCapacityTargetStatusUpdate(capacityTarget, 5, 50, clusterConditions, []shipper.ClusterCapacityReport{*builder.NewReport("nginx").Build()})
 
 	f.runCapacityTargetSyncHandler()
@@ -618,6 +690,17 @@ func TestSadPodsAreReflectedInCapacityTargetStatus(t *testing.T) {
 			builder.NewPodConditionBreakdown(1, string(corev1.PodReady), string(corev1.ConditionFalse), "ExpectedFail")).
 		AddPodConditionBreakdownBuilder(
 			builder.NewPodConditionBreakdown(1, string(corev1.PodReady), string(corev1.ConditionTrue), ""))
+
+	notReadyClusters := make([]string, 0, numClus)
+	for i := int32(0); i < numClus; i++ {
+		notReadyClusters = append(notReadyClusters, fmt.Sprintf("cluster_%d", i))
+	}
+	capacityTarget.Status.Conditions, _ = targetutil.SetTargetCondition(
+		capacityTarget.Status.Conditions,
+		targetutil.NewTargetCondition(
+			shipper.TargetConditionTypeReady,
+			corev1.ConditionFalse,
+			ClustersNotReady, fmt.Sprintf("%v", notReadyClusters)))
 
 	f.expectCapacityTargetStatusUpdate(capacityTarget, 1, 50, clusterConditions, []shipper.ClusterCapacityReport{*c.Build()}, createSadPodConditionFromPod(sadPod))
 

@@ -313,9 +313,7 @@ func (c *Controller) processTrafficTargetOnCluster(
 	shifter *podLabelShifter,
 ) error {
 	diff := diffutil.NewMultiDiff()
-	defer func() {
-		c.reportTrafficConditionChange(tt, diff)
-	}()
+	defer c.reportTrafficConditionChange(tt, diff)
 
 	clientset, err := c.clusterClientStore.GetClient(spec.Name, AgentName)
 	if err != nil {

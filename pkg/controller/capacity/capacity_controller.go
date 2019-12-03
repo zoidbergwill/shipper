@@ -26,9 +26,11 @@ import (
 	"github.com/bookingcom/shipper/pkg/clusterclientstore"
 	shippererrors "github.com/bookingcom/shipper/pkg/errors"
 	capacityutil "github.com/bookingcom/shipper/pkg/util/capacity"
+	clusterstatusutil "github.com/bookingcom/shipper/pkg/util/clusterstatus"
 	diffutil "github.com/bookingcom/shipper/pkg/util/diff"
 	"github.com/bookingcom/shipper/pkg/util/filters"
 	"github.com/bookingcom/shipper/pkg/util/replicas"
+	targetutil "github.com/bookingcom/shipper/pkg/util/target"
 	shipperworkqueue "github.com/bookingcom/shipper/pkg/workqueue"
 )
 
@@ -42,6 +44,7 @@ const (
 	WrongPodCount     = "WrongPodCount"
 	PodsNotReady      = "PodsNotReady"
 	MissingDeployment = "MissingDeployment"
+	ClustersNotReady  = "ClustersNotReady"
 )
 
 // Controller is the controller implementation for CapacityTarget resources
@@ -168,9 +171,7 @@ func (c *Controller) processCapacityTargetOnCluster(
 	status *shipper.ClusterCapacityStatus,
 ) error {
 	diff := diffutil.NewMultiDiff()
-	defer func() {
-		c.reportClusterCapacityConditionChange(ct, diff)
-	}()
+	defer c.reportClusterCapacityConditionChange(ct, diff)
 
 	informerFactory, err := c.clusterClientStore.GetInformerFactory(spec.Name)
 	if err != nil {
@@ -312,6 +313,9 @@ func (c *Controller) capacityTargetSyncHandler(key string) error {
 }
 
 func (c *Controller) processCapacityTarget(ct *shipper.CapacityTarget) (*shipper.CapacityTarget, error) {
+	diff := diffutil.NewMultiDiff()
+	defer c.reportClusterCapacityConditionChange(ct, diff)
+
 	clusterErrors := shippererrors.NewMultiError()
 	newClusterStatuses := make([]shipper.ClusterCapacityStatus, 0, len(ct.Spec.Clusters))
 
@@ -342,6 +346,21 @@ func (c *Controller) processCapacityTarget(ct *shipper.CapacityTarget) (*shipper
 	sort.Sort(byClusterName(newClusterStatuses))
 
 	ct.Status.Clusters = newClusterStatuses
+
+	clustersNotReady := make([]string, 0)
+	for _, clusterStatus := range ct.Status.Clusters {
+		if !clusterstatusutil.IsClusterCapacityReady(clusterStatus.Conditions) {
+			clustersNotReady = append(clustersNotReady, clusterStatus.Name)
+		}
+	}
+
+	if len(clustersNotReady) == 0 {
+		ct.Status.Conditions = targetutil.TransitionToReady(diff, ct.Status.Conditions)
+	} else {
+		ct.Status.Conditions = targetutil.TransitionToNotReady(
+			diff, ct.Status.Conditions,
+			ClustersNotReady, fmt.Sprintf("%v", clustersNotReady))
+	}
 
 	return ct, clusterErrors.Flatten()
 }
@@ -415,9 +434,8 @@ func (c *Controller) findTargetDeploymentForClusterSpec(informerFactory kubeinfo
 
 func (c *Controller) patchDeploymentWithReplicaCount(ct *shipper.CapacityTarget, targetDeployment *appsv1.Deployment, clusterName string, replicaCount int32, clusterStatus *shipper.ClusterCapacityStatus) (*appsv1.Deployment, error) {
 	diff := diffutil.NewMultiDiff()
-	defer func() {
-		c.reportClusterCapacityConditionChange(ct, diff)
-	}()
+	defer c.reportClusterCapacityConditionChange(ct, diff)
+
 	targetClusterClient, err := c.clusterClientStore.GetClient(clusterName, AgentName)
 	if err != nil {
 		cond := capacityutil.NewClusterCapacityCondition(
